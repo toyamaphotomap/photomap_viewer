@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>ふふっと富山のフォトマップ</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // ふふっと富山のフォトマップ ブランドカラー設定
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            teal: { 50:'#f6fcfc', 100:'#e8f6f8', 200:'#cfecf0', 300:'#b1e1e7', 400:'#8dd3dc', 500:'#69c5d1', 600:'#5cadb8', 700:'#4c8e96', 800:'#3d7279', 900:'#2e575c' },
+            pink: { 50:'#fdf8fb', 100:'#faeff5', 200:'#f4dcea', 300:'#eec6dc', 400:'#e6accc', 500:'#de92bc', 600:'#c380a5', 700:'#a06987', 800:'#81556d', 900:'#624053' }
+          }
+        }
+      }
+    };
+  </script>
+  <!-- Vue.js 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Leaflet Map CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; }
+    .img-contain { object-fit: contain; }
+    
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+    .modal-enter-active, .modal-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+    .modal-enter-from, .modal-leave-to { opacity: 0; transform: translateY(16px) scale(0.98); }
+    
+    .loader { border-top-color: #69C5D1; animation: spinner 1.2s linear infinite; }
+    @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    .custom-scrollbar::-webkit-scrollbar { height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 9999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .custom-scrollbar { scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9; }
+
+    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    
+    .leaflet-popup-content-wrapper { border-radius: 1rem; padding: 0.25rem; }
+    .leaflet-container { font-family: inherit; z-index: 10; width: 100%; height: 100%; }
+
+    .custom-map-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      transition: transform 0.2s ease;
+    }
+    .custom-map-pin:hover { transform: scale(1.2); }
+
+    .drop-zone-active { background-color: #f6fcfc !important; border-color: #69C5D1 !important; }
+
+    /* ふふっと富山のフォトマップ ブランドグラデーション（#DE92BC → #69C5D1） */
+    .brand-gradient {
+      background: linear-gradient(100deg,
+        #de92bc 0%, #c79cc0 20%, #afa6c4 40%, #98b1c9 60%, #80bbcd 80%, #69c5d1 100%);
+    }
+    /* 添付SVGと同じストップのパステル版（カード背景・区切り線などの控えめな装飾用） */
+    .brand-gradient-soft {
+      background: linear-gradient(90deg,
+        #ecc2d9 0%, #e9c2dc 12.5%, #e1c4e4 25%, #d1c7ed 37.5%, #bbccf2 50%,
+        #a7d0f0 62.5%, #99d3e9 75%, #93d5e1 87.5%, #92d5de 100%);
+    }
+    .brand-gradient-text {
+      background: linear-gradient(100deg, #DE92BC 0%, #bbccf2 50%, #69C5D1 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    /* Instagramらしい配色（公式のブランドグラデーションに近い配色） */
+    .instagram-gradient {
+      background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+    }
+    .instagram-gradient-text {
+      background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .device-toggle-btn { transition: all 0.15s ease; }
+  </style>
+</head>
+<body class="text-gray-800 bg-slate-100 antialiased">
+
+  <div id="sys-error-log" style="display:none;" class="bg-red-600 text-white p-3 fixed top-0 left-0 w-full z-[999999] text-xs font-mono break-all shadow-xl"></div>
+
+  <div id="app" class="min-h-screen relative flex flex-col pb-16">
+    
+    <!-- ローディング画面 -->
+    <div v-if="loading" class="fixed inset-0 flex flex-col items-center justify-center bg-white z-50">
+      <img :src="LOGO_DATA_URL" alt="ふふっと富山のフォトマップ" class="w-24 h-24 rounded-full shadow-lg mb-4">
+      <div class="loader ease-linear rounded-full border-4 border-t-4 border-teal-500 h-8 w-8 mb-3"></div>
+      <p class="text-gray-600 text-sm font-bold">ふふっと富山のフォトマップを読み込み中...</p>
+      <p class="text-xs text-teal-500 mt-2 font-mono px-4 text-center">{{ debugStatus }}</p>
+    </div>
+
+    <!-- ヘッダー -->
+    <div class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 w-full shadow-sm">
+      <header class="px-4 py-3 flex justify-between items-center max-w-7xl mx-auto gap-2">
+        <div class="flex items-center gap-2 cursor-pointer shrink-0" @click="activeTab = 'home'; selectedPhoto = null">
+          <img :src="LOGO_DATA_URL" alt="ふふっと富山のフォトマップ" class="w-9 h-9 rounded-full shadow-sm shrink-0">
+          <h1 class="text-base font-bold text-slate-800 tracking-wide hidden sm:block">ふふっと富山のフォトマップ</h1>
+        </div>
+
+        <div class="flex items-center gap-2">
+
+          <span class="text-xs font-bold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full border border-slate-200 shrink-0">
+            {{ filteredPhotos.length }} 件
+          </span>
+        </div>
+      </header>
+    </div>
+
+    <!-- ==========================================
+         🏠 タブ1: ホーム画面
+    =========================================== -->
+    <div v-show="activeTab === 'home' && !selectedPhoto" class="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
+      
+      <!-- ヒーローバナー ＆ サービス概要説明 -->
+      <section class="relative brand-gradient rounded-3xl p-6 sm:p-8 text-white shadow-xl overflow-hidden">
+        <div class="relative z-10 space-y-3">
+          <span class="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold tracking-wider">ふふっと富山のフォトマップ</span>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight">富山の美しい絶景を、地図から探そう。</h2>
+          <p class="text-xs sm:text-sm text-teal-100 max-w-2xl leading-relaxed">
+            「ふふっと富山のフォトマップ」は、立山連峰から雨晴海岸まで、富山県内の美しい撮影スポットを季節やカテゴリ、撮影データ（EXIF）付きで探せるフォトガイドアプリです。
+          </p>
+          <div class="pt-2 flex flex-wrap gap-2">
+            <button @click="switchTab('search')" class="px-5 py-2.5 bg-white text-teal-600 rounded-xl font-bold text-xs shadow-md hover:bg-teal-50 transition flex items-center gap-2">
+              <i class="fas fa-search"></i> スポットを探す
+            </button>
+            <button @click="switchTab('map')" class="px-5 py-2.5 bg-teal-500/40 border border-white/30 text-white rounded-xl font-bold text-xs backdrop-blur-md hover:bg-teal-500/60 transition flex items-center gap-2">
+              <i class="fas fa-map-marked-alt"></i> マップを開く
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- お知らせボード -->
+      <section>
+        <div class="flex items-center gap-2 mb-3">
+          <i class="fas fa-bullhorn text-amber-500"></i>
+          <h2 class="text-sm font-bold text-slate-800">お知らせ</h2>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/60">
+          <ul class="divide-y divide-slate-100 text-xs text-slate-700">
+            <li class="py-2.5 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center gap-1.5">
+              <span class="text-[10px] text-slate-400 font-mono">2026.08.13</span>
+              <span class="px-2 py-0.5 bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888] text-white font-bold rounded w-fit text-[10px]">Instagram</span>
+              <span class="font-medium">Instagram投稿の埋め込み表示に対応しました！</span>
+            </li>
+            <li class="py-2.5 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center gap-1.5">
+              <span class="text-[10px] text-slate-400 font-mono">2026.08.12</span>
+              <span class="px-2 py-0.5 bg-rose-50 text-rose-600 font-bold rounded w-fit text-[10px]">管理者機能</span>
+              <span class="font-medium">管理者ログイン・新規写真登録・EXIF自動抽出機能に対応しました！</span>
+            </li>
+            <li class="py-2.5 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center gap-1.5">
+              <span class="text-[10px] text-slate-400 font-mono">2026.08.10</span>
+              <span class="px-2 py-0.5 bg-emerald-50 text-emerald-600 font-bold rounded w-fit text-[10px]">機能更新</span>
+              <span class="font-medium">インタラクティブマップおよび季節・アイコンAND検索を実装しました。</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 今の時期のおすすめ -->
+      <section>
+        <div class="flex justify-between items-center mb-3">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-calendar-alt text-teal-500"></i>
+            <h2 class="text-sm font-bold text-slate-800">撮影日が今日の日付に近いおすすめの撮影スポット</h2>
+          </div>
+          <button @click="activeTab = 'search'" class="text-xs text-teal-600 font-bold hover:underline flex items-center gap-1 shrink-0">
+            すべて見る <i class="fas fa-arrow-right text-[10px]"></i>
+          </button>
+        </div>
+
+        <div class="flex overflow-x-auto gap-3 md:gap-4 pb-2 custom-scrollbar -mx-1 px-1" @touchstart.stop @touchmove.stop @touchend.stop>
+          <div v-for="photo in recommendedPhotos" :key="photo.id" @click="selectPhoto(photo, true)"
+               class="w-40 sm:w-44 md:w-48 shrink-0 bg-white rounded-2xl shadow-sm hover:shadow-lg border border-slate-200/60 overflow-hidden cursor-pointer transform hover:-translate-y-1 transition duration-200 flex flex-col group relative">
+            <div class="relative aspect-square bg-slate-900 flex items-center justify-center overflow-hidden">
+              <img :src="photo.imageUrl" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-60 select-none pointer-events-none" aria-hidden="true">
+              <img :src="photo.imageUrl" :alt="photo.name" class="relative z-10 w-full h-full img-contain group-hover:scale-105 transition duration-300" loading="lazy">
+              <div class="absolute top-1.5 right-1.5 z-20 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded font-medium">
+                {{ photo.city }}
+              </div>
+            </div>
+            <div class="p-2.5 flex flex-col flex-1 justify-between">
+              <h3 class="font-bold text-xs text-slate-800 line-clamp-1 group-hover:text-teal-600">{{ photo.name }}</h3>
+              <div class="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                <span v-if="photo.icon" class="text-teal-600 font-medium truncate flex items-center gap-1">
+                  <i v-if="getIconTagFA(photo.icon)" class="fas text-[9px]" :class="getIconTagFA(photo.icon)"></i> {{ photo.icon }}
+                </span>
+                <span v-else-if="photo.season" class="font-medium flex items-center gap-1" :class="getSeasonColors(photo.season).textSolid">
+                  <i class="fas fa-leaf text-[9px]"></i> {{ photo.season }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 🆕 直近の更新 -->
+      <section>
+        <div class="flex justify-between items-center mb-3">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-clock-rotate-left text-emerald-500"></i>
+            <h2 class="text-sm font-bold text-slate-800">新規登録スポット</h2>
+          </div>
+          <button @click="activeTab = 'search'" class="text-xs text-teal-600 font-bold hover:underline flex items-center gap-1 shrink-0">
+            すべて見る <i class="fas fa-arrow-right text-[10px]"></i>
+          </button>
+        </div>
+
+        <div class="flex overflow-x-auto gap-3 md:gap-4 pb-2 custom-scrollbar -mx-1 px-1" @touchstart.stop @touchmove.stop @touchend.stop>
+          <div v-for="photo in recentlyAddedPhotos" :key="photo.id" @click="selectPhoto(photo, true)"
+               class="w-40 sm:w-44 md:w-48 shrink-0 bg-white rounded-2xl shadow-sm hover:shadow-lg border border-slate-200/60 overflow-hidden cursor-pointer transform hover:-translate-y-1 transition duration-200 flex flex-col group relative">
+            <div class="relative aspect-square bg-slate-900 flex items-center justify-center overflow-hidden">
+              <img :src="photo.imageUrl" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-60 select-none pointer-events-none" aria-hidden="true">
+              <img :src="photo.imageUrl" :alt="photo.name" class="relative z-10 w-full h-full img-contain group-hover:scale-105 transition duration-300" loading="lazy">
+              <div class="absolute top-1.5 left-1.5 z-20 bg-emerald-600/90 backdrop-blur-md text-white text-[9px] px-2 py-0.5 rounded font-bold">
+                ID: {{ photo.id }}
+              </div>
+              <div class="absolute top-1.5 right-1.5 z-20 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded font-medium">
+                {{ photo.city }}
+              </div>
+            </div>
+            <div class="p-2.5 flex flex-col flex-1 justify-between">
+              <h3 class="font-bold text-xs text-slate-800 line-clamp-1 group-hover:text-teal-600">{{ photo.name }}</h3>
+              <div class="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                <span v-if="photo.icon" class="text-teal-600 font-medium truncate flex items-center gap-1">
+                  <i v-if="getIconTagFA(photo.icon)" class="fas text-[9px]" :class="getIconTagFA(photo.icon)"></i> {{ photo.icon }}
+                </span>
+                <span v-else-if="photo.season" class="font-medium flex items-center gap-1" :class="getSeasonColors(photo.season).textSolid">
+                  <i class="fas fa-leaf text-[9px]"></i> {{ photo.season }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 📸 みなさまからのご投稿 (#ふふっと富山のフォトマップ) -->
+      <section class="space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+          <div>
+            <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <i class="fab fa-instagram instagram-gradient-text text-base"></i> みなさまからのご投稿
+            </h2>
+            <p class="text-xs text-slate-500">Instagramで <span class="font-bold instagram-gradient-text">#ふふっと富山のフォトマップ</span> を付けて投稿された写真</p>
+          </div>
+          <a href="https://www.instagram.com/explore/tags/%E3%81%B5%E3%81%B5%E3%81%A3%E3%81%A8%E5%AF%8C%E5%B1%B1%E3%81%AE%E3%83%95%E3%82%A9%E3%83%88%E3%83%9E%E3%83%83%E3%83%9F/" 
+             target="_blank" rel="noopener" 
+             class="px-3.5 py-1.5 instagram-gradient text-white rounded-full text-xs font-bold hover:opacity-90 transition flex items-center gap-1.5 w-fit shadow-sm">
+            <i class="fab fa-instagram"></i> 「ふふっと富山のフォトマップ」をInstagramで見る
+          </a>
+        </div>
+
+        <div class="bg-gradient-to-br from-[#fdf2f8]/70 via-[#fef3f0]/50 to-[#fff7ed]/50 p-4 sm:p-6 rounded-3xl border border-pink-100 shadow-sm space-y-4">
+          <div v-if="instaLoading" class="text-center py-8 text-xs instagram-gradient-text font-bold flex flex-col items-center gap-2">
+            <i class="fas fa-spinner fa-spin text-xl"></i>
+            <span>Instagramの最新投稿を取得中...</span>
+          </div>
+
+          <div v-else-if="instagramPosts.length > 0" class="flex overflow-x-auto gap-3 pb-2 custom-scrollbar -mx-1 px-1" @touchstart.stop @touchmove.stop @touchend.stop>
+            <a v-for="post in instagramPosts" :key="post.id" :href="post.permalink" target="_blank" rel="noopener"
+               class="w-40 sm:w-48 md:w-52 shrink-0 bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/60 flex flex-col group relative hover:shadow-md transition">
+              <div class="relative aspect-square bg-slate-900 overflow-hidden flex items-center justify-center">
+                <img :src="post.media_url" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                <div class="absolute top-2 right-2 bg-black/60 backdrop-blur-md text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px]">
+                  <i class="fab fa-instagram"></i>
+                </div>
+              </div>
+              <div class="p-3 flex flex-col justify-between flex-1 gap-1.5 text-left bg-white">
+                <div class="text-[10px] font-mono font-bold text-slate-400 flex items-center gap-1 shrink-0">
+                  <i class="far fa-clock text-[9px]"></i>
+                  <span>{{ post.date }}</span>
+                </div>
+                <p class="text-[11px] text-slate-700 leading-snug line-clamp-3 font-medium flex-1">
+                  {{ post.caption }}
+                </p>
+              </div>
+            </a>
+          </div>
+
+          <div v-else class="text-center py-6 bg-white/80 rounded-2xl border border-dashed border-pink-200 p-4 space-y-2">
+            <i class="fab fa-instagram text-3xl instagram-gradient-text"></i>
+            <p class="text-xs font-bold text-slate-700">Instagram投稿を取得できませんでした</p>
+            <p v-if="instaErrorMessage" class="text-[11px] text-rose-600 font-mono bg-rose-50 border border-rose-200 rounded-lg px-2 py-1.5 max-w-md mx-auto break-words">
+              {{ instaErrorMessage }}
+            </p>
+            <p class="text-[11px] text-slate-500 max-w-md mx-auto">
+              <code class="bg-slate-100 px-1 py-0.5 rounded text-[#c2185b] font-mono">Code.gs</code> 内の設定（アクセストークン・ハッシュタグID等）をご確認ください。
+            </p>
+          </div>
+
+          <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 text-center space-y-1 text-xs">
+            <p class="font-bold text-slate-800">✨ あなたの写真もアプリに掲載しよう！</p>
+            <p class="text-slate-500 text-[11px]">Instagramでハッシュタグ <span class="font-bold instagram-gradient-text">#ふふっと富山のフォトマップ</span> を付けて富山の絶景を投稿してください。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 📷 ふふっと富山のフォトマップ 公式Instagram投稿 (3×2段 6枚ギャラリー) -->
+      <section class="space-y-3 pt-2">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+          <div>
+            <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <i class="fab fa-instagram instagram-gradient-text text-base"></i> ふふっと富山のフォトマップ 公式投稿
+            </h2>
+            <p class="text-xs text-slate-500">ふふっと富山のフォトマップ公式Instagramアカウントの最新ギャラリー</p>
+          </div>
+          <a :href="officialInstagramUrl" target="_blank" rel="noopener" 
+             class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-bold transition flex items-center gap-1.5 w-fit shadow-sm">
+            <i class="fab fa-instagram instagram-gradient-text"></i> 公式アカウントをフォロー
+          </a>
+        </div>
+
+        <div class="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+          <div v-if="officialInstaLoading" class="text-center py-8 text-xs instagram-gradient-text font-bold flex flex-col items-center gap-2">
+            <i class="fas fa-spinner fa-spin text-xl"></i>
+            <span>公式Instagram投稿を取得中...</span>
+          </div>
+
+          <template v-else-if="officialInstagramPosts.length > 0">
+            <!-- 3列 × 2行 (計6枚) グリッド構造 -->
+            <div class="grid grid-cols-3 gap-2 sm:gap-3">
+              <a v-for="(official, idx) in officialInstagramPosts" :key="idx" :href="official.permalink" target="_blank" rel="noopener"
+                 class="aspect-square bg-slate-900 rounded-xl sm:rounded-2xl overflow-hidden relative group block shadow-sm border border-slate-100">
+                <img :src="official.media_url" :alt="official.caption" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition duration-200 flex flex-col justify-end p-2 text-white text-[10px]">
+                  <p class="line-clamp-2 font-medium leading-tight">{{ official.caption }}</p>
+                </div>
+                <div class="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur-md text-white text-[9px] px-1.5 py-0.5 rounded-md font-mono">
+                  <i class="fab fa-instagram"></i>
+                </div>
+              </a>
+            </div>
+
+            <div class="text-center pt-1">
+              <a :href="officialInstagramUrl" target="_blank" rel="noopener" class="text-xs font-bold text-teal-600 hover:underline inline-flex items-center gap-1">
+                Instagramで公式アカウントをチェック <i class="fas fa-external-link-alt text-[9px]"></i>
+              </a>
+            </div>
+          </template>
+
+          <div v-else class="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 p-4 space-y-2">
+            <i class="fab fa-instagram text-3xl instagram-gradient-text"></i>
+            <p class="text-xs font-bold text-slate-700">公式Instagram投稿を取得できませんでした</p>
+            <p v-if="officialInstaErrorMessage" class="text-[11px] text-rose-600 font-mono bg-rose-50 border border-rose-200 rounded-lg px-2 py-1.5 max-w-md mx-auto break-words">
+              {{ officialInstaErrorMessage }}
+            </p>
+            <p class="text-[11px] text-slate-500 max-w-md mx-auto">
+              <code class="bg-slate-100 px-1 py-0.5 rounded text-[#c2185b] font-mono">Code.gs</code> 内の設定（アクセストークン・アカウントID等）をご確認ください。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 🔗 各種関連リンク -->
+      <section class="space-y-3 pt-2">
+        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+          <i class="fas fa-link text-teal-600"></i> 各種関連リンク
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <a href="https://www.info-toyama.com/" target="_blank" rel="noopener" class="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition flex items-center gap-3 group">
+            <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-lg shrink-0 group-hover:bg-teal-600 group-hover:text-white transition">
+              <i class="fas fa-globe"></i>
+            </div>
+            <div>
+              <p class="font-bold text-slate-800">とやま観光ナビ</p>
+              <p class="text-[10px] text-slate-500">富山県の公式観光情報サイト</p>
+            </div>
+          </a>
+
+          <a :href="officialInstagramUrl" target="_blank" rel="noopener" class="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition flex items-center gap-3 group">
+            <div class="w-10 h-10 rounded-xl instagram-gradient text-white flex items-center justify-center text-lg shrink-0 transition">
+              <i class="fab fa-instagram"></i>
+            </div>
+            <div>
+              <p class="font-bold text-slate-800">公式Instagram</p>
+              <p class="text-[10px] text-slate-500">ふふっと富山のフォトマップ 発信中</p>
+            </div>
+          </a>
+
+          <a href="https://www.pref.toyama.jp/" target="_blank" rel="noopener" class="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition flex items-center gap-3 group">
+            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition">
+              <i class="fas fa-landmark"></i>
+            </div>
+            <div>
+              <p class="font-bold text-slate-800">富山県公式サイト</p>
+              <p class="text-[10px] text-slate-500">県内の各種イベント・広報情報</p>
+            </div>
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <!-- ==========================================
+         🔍 タブ2: 検索・一覧画面
+    =========================================== -->
+    <div v-show="activeTab === 'search' && !selectedPhoto" class="flex flex-col flex-1 w-full">
+      
+      <!-- 検索・フィルターコントロール -->
+      <div class="sticky top-[53px] z-20 bg-white border-b border-slate-200 shadow-sm">
+        
+        <div class="p-3 bg-slate-50 border-b border-slate-100 max-w-7xl mx-auto w-full space-y-2">
+          <div class="relative max-w-3xl mx-auto flex items-center gap-2">
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400"><i class="fas fa-search text-sm"></i></span>
+              <input type="text" v-model="searchQuery" placeholder="キーワード（場所名、説明など）で検索..." 
+                     class="w-full pl-10 pr-9 py-2 bg-white border border-slate-300 rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">
+              <button v-if="searchQuery" @click="searchQuery = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+                <i class="fas fa-times-circle"></i>
+              </button>
+            </div>
+            
+            <button @click="isFilterOpen = !isFilterOpen" 
+                    :class="isFilterOpen ? 'bg-teal-600 text-white' : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'"
+                    class="px-3 py-2 rounded-full text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 shadow-sm">
+              <i class="fas" :class="isFilterOpen ? 'fa-sliders' : 'fa-filter'"></i>
+              <span>絞り込み</span>
+              <span v-if="hasActiveFilters" class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+              <i class="fas text-[10px]" :class="isFilterOpen ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+            </button>
+
+            <button v-if="hasActiveFilters" @click="resetFilters" 
+                    class="px-3 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-full text-xs font-bold hover:bg-rose-100 transition whitespace-nowrap flex items-center gap-1">
+              <i class="fas fa-undo-alt text-[10px]"></i> リセット
+            </button>
+          </div>
+
+          <!-- 並べ替え（ソート）コントロール -->
+          <div class="max-w-3xl mx-auto flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-600 flex items-center gap-1 text-[11px]">
+                <i class="fas fa-sort text-teal-500"></i> 並べ替え:
+              </span>
+              <select v-model="sortOption" @change="handleSortChange" 
+                      class="bg-white border border-slate-300 text-slate-800 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium cursor-pointer shadow-sm">
+                <option value="default">🔢 ID順（昇順）</option>
+                <option value="id_desc">🔢 ID順（降順）</option>
+                <option value="random">🔀 ランダム（おすすめ）</option>
+                <option value="distance">📍 現在地から近い順</option>
+                <option value="date_desc">📅 撮影日（新しい順）</option>
+                <option value="date_asc">📅 撮影日（古い順）</option>
+              </select>
+            </div>
+
+            <div v-if="isLocating" class="text-[11px] text-teal-600 font-bold flex items-center gap-1 animate-pulse">
+              <i class="fas fa-spinner fa-spin"></i> 位置情報を取得中...
+            </div>
+            <div v-else-if="userLocation && sortOption === 'distance'" class="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+              <i class="fas fa-check-circle"></i> 位置情報を反映中
+            </div>
+          </div>
+        </div>
+
+        <!-- 3軸フィルタコントロール -->
+        <transition name="fade">
+          <div v-show="isFilterOpen" class="p-3 max-w-7xl mx-auto w-full space-y-2.5 text-xs border-b border-slate-100 bg-slate-50/50">
+            <!-- 1. 市町村 -->
+            <div class="flex items-center gap-2">
+              <span class="w-14 shrink-0 font-bold text-teal-700 flex items-center gap-1 text-[11px]"><i class="fas fa-map-marker-alt"></i> 市町村</span>
+              <div class="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                <button @click="selectedCity = ''" :class="selectedCity === '' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 py-1 rounded-full font-medium whitespace-nowrap transition shrink-0">すべて</button>
+                <button v-for="city in uniqueCities" :key="city" @click="selectedCity = (selectedCity === city ? '' : city)" :class="selectedCity === city ? 'bg-teal-600 text-white shadow-sm font-bold' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'" class="px-2.5 py-1 rounded-full whitespace-nowrap transition shrink-0">{{ city }}</button>
+              </div>
+            </div>
+            <!-- 2. 季節 -->
+            <div class="flex items-center gap-2">
+              <span class="w-14 shrink-0 font-bold text-orange-700 flex items-center gap-1 text-[11px]"><i class="fas fa-sun"></i> 季節</span>
+              <div class="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                <button @click="selectedSeason = ''" :class="selectedSeason === '' ? 'bg-orange-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 py-1 rounded-full font-medium whitespace-nowrap transition shrink-0">すべて</button>
+                <button v-for="season in uniqueSeasons" :key="season" @click="selectedSeason = (selectedSeason === season ? '' : season)" :class="selectedSeason === season ? 'bg-orange-600 text-white shadow-sm font-bold' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'" class="px-2.5 py-1 rounded-full whitespace-nowrap transition shrink-0">{{ season }}</button>
+              </div>
+            </div>
+            <!-- 3. アイコン -->
+            <div class="flex items-center gap-2">
+              <span class="w-14 shrink-0 font-bold text-emerald-700 flex items-center gap-1 text-[11px]"><i class="fas fa-icons"></i> アイコン</span>
+              <div class="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                <button @click="selectedIcon = ''" :class="selectedIcon === '' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 py-1 rounded-full font-medium whitespace-nowrap transition shrink-0">すべて</button>
+                <button v-for="icon in uniqueIcons" :key="icon" @click="selectedIcon = (selectedIcon === icon ? '' : icon)" :class="selectedIcon === icon ? 'bg-emerald-600 text-white shadow-sm font-bold' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'" class="px-2.5 py-1 rounded-full whitespace-nowrap transition shrink-0">{{ icon }}</button>
+              </div>
+            </div>
+          </div>
+        </transition>
+
+      </div>
+
+      <!-- 写真グリッド一覧 -->
+      <main class="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-8 w-full max-w-7xl mx-auto">
+        <div v-if="filteredPhotos.length === 0 && !loading" class="text-center text-slate-400 py-16 flex flex-col items-center">
+          <div class="bg-slate-200/60 rounded-full w-20 h-20 flex items-center justify-center mb-3">
+            <i class="fas fa-search text-3xl text-slate-400"></i>
+          </div>
+          <p class="font-bold text-slate-600 text-sm">条件に一致する写真が見つかりません</p>
+          <button @click="resetFilters" class="mt-4 px-4 py-1.5 bg-teal-600 text-white text-xs font-bold rounded-full hover:bg-teal-700 shadow-sm transition">
+            すべてのフィルターをリセット
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4 pb-12">
+          <div v-for="photo in filteredPhotos" :key="photo.id" @click="selectPhoto(photo)"
+               class="bg-white rounded-2xl shadow-sm hover:shadow-xl border border-slate-200/70 overflow-hidden cursor-pointer transform hover:-translate-y-1 transition duration-200 flex flex-col group relative">
+            
+            <div class="relative aspect-[4/3] bg-slate-900 flex items-center justify-center overflow-hidden">
+              <img :src="photo.imageUrl" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-60 select-none pointer-events-none" aria-hidden="true">
+              <img :src="photo.imageUrl" :alt="photo.name" class="relative z-10 w-full h-full img-contain group-hover:scale-105 transition duration-300" loading="lazy">
+              <div class="absolute top-1.5 right-1.5 z-20 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded font-medium shadow-sm">
+                {{ photo.city }}
+              </div>
+            </div>
+
+            <div class="p-2.5 flex flex-col flex-1 justify-between gap-1.5">
+              <h3 class="font-bold text-xs text-slate-800 line-clamp-2 leading-tight group-hover:text-teal-600 transition">{{ photo.name }}</h3>
+              
+              <div class="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100 gap-1">
+                <span v-if="sortOption === 'distance' && userLocation && photo.coords" class="bg-teal-50 text-teal-600 font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0">
+                  <i class="fas fa-location-arrow text-[9px]"></i> {{ formatDistance(photo.coords) }}
+                </span>
+                <span v-else-if="photo.season" class="font-medium px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0" :class="[getSeasonColors(photo.season).bg, getSeasonColors(photo.season).text]">
+                  <i class="fas fa-leaf text-[9px]"></i> {{ photo.season }}
+                </span>
+                <span v-if="photo.icon" class="bg-teal-50 text-teal-600 font-medium px-1.5 py-0.5 rounded truncate max-w-[110px] flex items-center gap-0.5" :title="photo.icon">
+                  <i v-if="getIconTagFA(photo.icon)" class="fas text-[9px]" :class="getIconTagFA(photo.icon)"></i> {{ photo.icon }}
+                </span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- ==========================================
+         🗺 タブ3: 全体マップ画面
+    =========================================== -->
+    <div v-show="activeTab === 'map' && !selectedPhoto" class="flex-1 w-full h-[calc(100vh-115px)] relative flex flex-col">
+      <div class="bg-white border-b shadow-sm z-10">
+        <!-- 地図の表示切り替え -->
+        <div class="px-3 pt-3 pb-1 max-w-7xl mx-auto w-full">
+          <div class="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-100 border border-slate-200 shadow-inner">
+            <button @click="setMapViewMode('custom')" 
+                    class="relative px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5"
+                    :class="mapViewMode === 'custom' ? 'brand-gradient text-white shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'">
+              <i class="fas fa-map-marked-alt"></i>
+              <span>アプリ内マップ</span>
+            </button>
+            <button @click="setMapViewMode('mymap')" 
+                    class="relative px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-1.5"
+                    :class="mapViewMode === 'mymap' ? 'brand-gradient text-white shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'">
+              <i class="fas fa-map"></i>
+              <span>Googleマイマップ</span>
+            </button>
+          </div>
+        </div>
+
+        <div v-show="mapViewMode === 'custom'" class="p-2.5 bg-slate-50 border-b border-slate-100 max-w-7xl mx-auto w-full flex items-center gap-2">
+          <div class="relative flex-1">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fas fa-search text-xs"></i></span>
+            <input type="text" v-model="mapSearchQuery" placeholder="マップ上を検索..." 
+                   class="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-300 rounded-full text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-sm">
+            <button v-if="mapSearchQuery" @click="mapSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600">
+              <i class="fas fa-times-circle text-xs"></i>
+            </button>
+          </div>
+          
+          <button @click="mapIsFilterOpen = !mapIsFilterOpen" 
+                  :class="mapIsFilterOpen ? 'bg-teal-600 text-white' : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'"
+                  class="px-3 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap flex items-center gap-1 shadow-sm">
+            <i class="fas" :class="mapIsFilterOpen ? 'fa-sliders' : 'fa-filter'"></i>
+            <span>マップ絞り込み</span>
+            <span v-if="hasActiveMapFilters" class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+          </button>
+        </div>
+
+        <div v-show="mapViewMode === 'custom'" class="bg-white px-4 py-1.5 border-b text-xs flex items-center justify-between">
+          <span class="text-slate-600 font-medium"><i class="fas fa-info-circle text-teal-500 mr-1"></i>表示件数: {{ mapFilteredPhotos.length }} 件</span>
+          <button v-if="hasActiveMapFilters" @click="resetMapFilters" class="text-teal-600 font-bold hover:underline text-[11px]">マップ条件解除</button>
+        </div>
+
+        <div v-show="mapViewMode === 'mymap'" class="bg-white px-4 py-1.5 border-b text-xs flex items-center gap-1.5 text-slate-500">
+          <i class="fas fa-circle-info text-teal-500"></i>
+          <span>プロジェクトメンバーが作成したGoogleマイマップを表示しています</span>
+        </div>
+      </div>
+
+      <div v-show="mapViewMode === 'custom'" id="full-map" class="w-full flex-1 bg-slate-200"></div>
+
+      <div v-if="mapViewMode === 'mymap'" class="w-full flex-1 bg-slate-200 relative">
+        <iframe src="https://www.google.com/maps/d/u/1/embed?mid=1TQEFVDAjG28tjLVZNWvE1lCblmSTw_s&ehbc=2E312F" 
+                class="absolute inset-0 w-full h-full border-0" loading="lazy" allowfullscreen></iframe>
+      </div>
+    </div>
+
+
+    <!-- ボトムナビゲーション -->
+    <nav class="fixed bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg z-30 pb-safe">
+      <div class="flex justify-around items-center h-14 max-w-7xl mx-auto text-xs font-bold">
+        <button @click="switchTab('home')" class="flex flex-col items-center justify-center w-full h-full transition" :class="activeTab === 'home' && !selectedPhoto ? 'text-teal-600' : 'text-slate-400 hover:text-slate-600'">
+          <i class="fas fa-home text-lg mb-0.5"></i>
+          <span>ホーム</span>
+        </button>
+        <button @click="switchTab('search')" class="flex flex-col items-center justify-center w-full h-full transition" :class="activeTab === 'search' && !selectedPhoto ? 'text-teal-600' : 'text-slate-400 hover:text-slate-600'">
+          <i class="fas fa-list text-lg mb-0.5"></i>
+          <span>一覧・検索</span>
+        </button>
+        <button @click="switchTab('map')" class="flex flex-col items-center justify-center w-full h-full transition" :class="activeTab === 'map' && !selectedPhoto ? 'text-teal-600' : 'text-slate-400 hover:text-slate-600'">
+          <i class="fas fa-map-marked-alt text-lg mb-0.5"></i>
+          <span>マップ</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ==========================================
+         📷 個別詳細モーダル
+    =========================================== -->
+    <transition name="fade">
+      <div v-if="selectedPhoto" class="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm" @click="goBack"></div>
+    </transition>
+
+    <transition name="modal">
+      <div v-if="selectedPhoto" 
+           class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-2 sm:p-6 lg:p-10 pb-safe"
+           @touchstart="handleTouchStart"
+           @touchmove="handleTouchMove"
+           @touchend="handleTouchEnd">
+        
+        <div class="relative w-full h-full md:h-auto md:max-h-[92vh] md:max-w-5xl pointer-events-auto flex items-center justify-center">
+
+          <!-- PC版左右ボタン -->
+          <button v-if="currentIndex > 0" @click.stop="prevPhoto" 
+                  class="hidden md:flex absolute -left-12 lg:-left-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/95 hover:bg-white text-slate-800 items-center justify-center transition shadow-2xl z-50 group hover:scale-110 border border-slate-200">
+            <i class="fas fa-chevron-left text-lg group-hover:-translate-x-0.5 transition"></i>
+          </button>
+          
+          <button v-if="currentIndex < currentListLength - 1" @click.stop="nextPhoto" 
+                  class="hidden md:flex absolute -right-12 lg:-right-16 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/95 hover:bg-white text-slate-800 items-center justify-center transition shadow-2xl z-50 group hover:scale-110 border border-slate-200">
+            <i class="fas fa-chevron-right text-lg group-hover:translate-x-0.5 transition"></i>
+          </button>
+
+          <!-- モーダル本体 -->
+          <div class="bg-white w-full h-full md:h-auto md:max-h-[92vh] md:rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row relative" @click.stop>
+            
+            <button @click="goBack" class="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition shadow-lg z-30">
+              <i class="fas fa-times text-base"></i>
+            </button>
+
+            <!-- 画像領域 -->
+            <div class="w-full md:w-1/2 bg-slate-950 relative shrink-0 flex items-center justify-center h-[42vh] md:h-auto select-none overflow-hidden">
+              <img :src="selectedPhoto.imageUrl" class="absolute inset-0 w-full h-full object-cover blur-2xl scale-150 opacity-60 select-none pointer-events-none" aria-hidden="true">
+              <img :src="selectedPhoto.imageUrl" class="relative z-10 w-full h-full img-contain select-none pointer-events-none">
+            </div>
+
+            <!-- 詳細情報 -->
+            <div class="w-full md:w-1/2 flex-1 overflow-y-auto bg-white rounded-t-3xl md:rounded-none -mt-4 md:mt-0 relative z-10 px-5 pt-6 pb-12 md:p-8 no-scrollbar space-y-5">
+              
+
+              <div class="flex flex-wrap gap-2">
+                <span @click="filterBy('city', selectedPhoto.city)" class="cursor-pointer hover:bg-teal-100 transition px-3 py-1 bg-teal-50 text-teal-700 border border-teal-100 text-xs font-bold rounded-full flex items-center gap-1">
+                  <i class="fas fa-map-marker-alt"></i> {{ selectedPhoto.city }}
+                </span>
+                <span v-if="selectedPhoto.season" @click="filterBy('season', selectedPhoto.season)" 
+                      class="cursor-pointer transition px-3 py-1 border text-xs font-bold rounded-full flex items-center gap-1"
+                      :class="[getSeasonColors(selectedPhoto.season).bg, getSeasonColors(selectedPhoto.season).text, getSeasonColors(selectedPhoto.season).border, getSeasonColors(selectedPhoto.season).hoverBg]">
+                  <i class="fas fa-leaf"></i> {{ selectedPhoto.season }}
+                </span>
+                <span v-if="selectedPhoto.icon" @click="filterBy('icon', selectedPhoto.icon)" class="cursor-pointer hover:bg-teal-100 transition px-3 py-1 bg-teal-50 text-teal-700 border border-teal-100 text-xs font-bold rounded-full flex items-center gap-1">
+                  <i v-if="getIconTagFA(selectedPhoto.icon)" class="fas" :class="getIconTagFA(selectedPhoto.icon)"></i> {{ selectedPhoto.icon }}
+                </span>
+              </div>
+
+              <div>
+                <h2 class="text-xl md:text-2xl font-bold text-slate-900 leading-snug">{{ selectedPhoto.name }}</h2>
+                <p v-if="selectedPhoto.address" class="text-xs text-slate-500 flex items-start gap-1 mt-1.5">
+                  <i class="fas fa-map-pin text-slate-400 mt-0.5"></i> {{ selectedPhoto.address }}
+                </p>
+              </div>
+
+              <div v-if="selectedPhoto.description" class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                <p class="text-slate-700 text-xs sm:text-sm leading-relaxed whitespace-pre-line">{{ selectedPhoto.description }}</p>
+              </div>
+
+              <!-- 個別マップ -->
+              <div v-if="selectedPhoto.coords">
+                <div class="flex justify-between items-center mb-2">
+                  <h3 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <i class="fas fa-map text-teal-500"></i> スポットの位置
+                  </h3>
+                  <a :href="getMapsLink(selectedPhoto.coords)" target="_blank" class="text-[11px] text-teal-600 font-bold hover:underline">
+                    Google Mapsアプリで開く <i class="fas fa-external-link-alt text-[9px]"></i>
+                  </a>
+                </div>
+                <div id="detail-map" class="w-full h-44 rounded-2xl border border-slate-200 overflow-hidden shadow-inner"></div>
+              </div>
+
+              <!-- 近くの撮影スポット -->
+              <div v-if="nearbyPhotos.length > 0">
+                <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                  <i class="fas fa-compass text-teal-500"></i> この近くのスポット
+                </h3>
+                <div class="flex overflow-x-auto gap-2.5 pb-3 pt-1 custom-scrollbar -mx-1 px-1" @touchstart.stop @touchmove.stop @touchend.stop>
+                  <div v-for="near in nearbyPhotos" :key="near.id" 
+                       @touchstart="handleNearTouchStart" @touchmove="handleNearTouchMove" @mousedown="handleNearMouseDown" @mousemove="handleNearMouseMove" @click="handleNearClick(near)" 
+                       class="w-28 shrink-0 cursor-pointer group bg-slate-50 p-1.5 rounded-xl border border-slate-100 hover:border-teal-200 transition">
+                    <div class="aspect-[4/3] rounded-lg bg-slate-900 overflow-hidden mb-1 flex items-center justify-center relative">
+                      <img :src="near.imageUrl" class="absolute inset-0 w-full h-full object-cover blur-md scale-125 opacity-60 select-none pointer-events-none" aria-hidden="true">
+                      <img :src="near.imageUrl" class="relative z-10 w-full h-full img-contain group-hover:scale-105 transition duration-200">
+                    </div>
+                    <p class="text-[11px] font-bold text-slate-800 truncate group-hover:text-teal-600">{{ near.name }}</p>
+                    <p class="text-[9px] text-slate-500 truncate"><i class="fas fa-map-marker-alt"></i> {{ near.city }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- EXIF 撮影データ -->
+              <div>
+                <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                  <i class="fas fa-camera-retro text-slate-400"></i> 撮影データ (EXIF)
+                </h3>
+                <div class="grid grid-cols-2 gap-y-3 gap-x-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">カメラ</span><span class="font-medium text-slate-800">{{ selectedPhoto.camera || '不明' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">レンズ</span><span class="font-medium text-slate-800 truncate" :title="selectedPhoto.lens">{{ selectedPhoto.lens || '不明' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">焦点距離</span><span class="font-medium text-slate-800">{{ selectedPhoto.focalLength || '-' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">絞り (F値)</span><span class="font-medium text-slate-800">{{ selectedPhoto.aperture || '-' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">シャッタースピード</span><span class="font-medium text-slate-800">{{ selectedPhoto.shutter || '-' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">ISO感度</span><span class="font-medium text-slate-800">{{ selectedPhoto.iso || '-' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">露出補正</span><span class="font-medium text-slate-800">{{ selectedPhoto.exposure || '-' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">撮影日</span><span class="font-medium text-slate-800">{{ selectedPhoto.date || '-' }}</span></div>
+                  <div class="flex flex-col"><span class="text-slate-400 text-[9px] font-bold">撮影時刻</span><span class="font-medium text-slate-800">{{ selectedPhoto.time || '-' }}</span></div>
+                </div>
+              </div>
+
+              <div class="h-6"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+  </div>
+
+  <script>
+    try {
+      // ふふっと富山のフォトマップ 公式ロゴ（base64埋め込み）
+      const LOGO_DATA_URL = "data:image/png;base64,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";
+
+      // favicon にも同じロゴを設定
+      var faviconLink = document.createElement('link');
+      faviconLink.rel = 'icon';
+      faviconLink.href = LOGO_DATA_URL;
+      document.head.appendChild(faviconLink);
+
+      const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+      // ==== GAS Web App (API) 設定 ====
+      // GASを「ウェブアプリ」としてデプロイして得た /exec のURLを貼り付けてください
+      const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxSslYJhbTDhOlX3QIztRgB-LnkYTamBQWyio9Y9ZHa6dl1ouubtWLVD-K-B2IktSAHwA/exec";
+
+      // GAS APIを呼び出す共通関数（GETのみ・JSONを返す）
+      const callGas = async (action) => {
+        const res = await fetch(GAS_API_URL + '?action=' + encodeURIComponent(action), { method: 'GET', redirect: 'follow' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.json();
+      };
+
+      createApp({
+        setup() {
+          const photos = ref([]);
+          const searchQuery = ref("");
+          
+          const selectedCity = ref("");
+          const selectedSeason = ref("");
+          const selectedIcon = ref("");
+          const isFilterOpen = ref(false);
+
+          const sortOption = ref("default");
+          const userLocation = ref(null);
+          const isLocating = ref(false);
+          const shuffledPhotosCache = ref([]);
+
+          const mapSearchQuery = ref("");
+          const mapSelectedCity = ref("");
+          const mapSelectedSeason = ref("");
+          const mapSelectedIcon = ref("");
+          const mapIsFilterOpen = ref(false);
+
+          const activeTab = ref("home");
+          const selectedPhoto = ref(null);
+          const currentList = ref([]);
+          const loading = ref(true);
+          const debugStatus = ref("初期化中...");
+
+          // 今月（1〜12月）
+          const currentMonth = ref(new Date().getMonth() + 1);
+
+          // 📸 Instagram 投稿データ＆ステート
+          const officialInstagramUrl = "https://www.instagram.com/hufutto_toyama_photomap/";
+          const instagramPosts = ref([]);
+          const instaLoading = ref(true);
+          const instaErrorMessage = ref("");
+          const officialInstagramPosts = ref([]);
+          const officialInstaLoading = ref(true);
+          const officialInstaErrorMessage = ref("");
+
+          // ハッシュタグ投稿(#ふふっと富山のフォトマップ)の取得
+          const fetchInstagramHashtagPosts = () => {
+            instaLoading.value = true;
+            instaErrorMessage.value = "";
+            callGas('getInstaHash')
+              .then(res => {
+                instaLoading.value = false;
+                if (res && res.success && res.data) {
+                  instagramPosts.value = res.data;
+                } else {
+                  instagramPosts.value = [];
+                  instaErrorMessage.value = (res && res.error) ? res.error : '不明なエラーが発生しました。';
+                  console.error('Instagram Hashtag取得エラー:', instaErrorMessage.value);
+                }
+              })
+              .catch(err => {
+                instaLoading.value = false;
+                instagramPosts.value = [];
+                instaErrorMessage.value = err.message || String(err);
+                console.error('Instagram Hashtag取得エラー:', err);
+              });
+          };
+
+          // 公式アカウント(ふふっと富山のフォトマップ)投稿6件の取得
+          const fetchOfficialInstagramPosts = () => {
+            officialInstaLoading.value = true;
+            officialInstaErrorMessage.value = "";
+            callGas('getInstaOfficial')
+              .then(res => {
+                officialInstaLoading.value = false;
+                if (res && res.success && res.data) {
+                  officialInstagramPosts.value = res.data;
+                } else {
+                  officialInstagramPosts.value = [];
+                  officialInstaErrorMessage.value = (res && res.error) ? res.error : '不明なエラーが発生しました。';
+                  console.error('公式Instagram取得エラー:', officialInstaErrorMessage.value);
+                }
+              })
+              .catch(err => {
+                officialInstaLoading.value = false;
+                officialInstagramPosts.value = [];
+                officialInstaErrorMessage.value = err.message || String(err);
+                console.error('公式Instagram取得エラー:', err);
+              });
+          };
+
+          // マップおよびスワイプ・ドラッグ制御用変数
+          let fullLeafletMap = null;
+          let fullMapMarkersGroup = null;
+          let detailLeafletMap = null;
+
+          let touchStartX = 0;
+          let touchStartY = 0;
+          let touchEndX = 0;
+          let touchEndY = 0;
+          let nearStartX = 0;
+          let nearStartY = 0;
+          let isNearDragged = false;
+
+          const handleNearTouchStart = (e) => {
+            if (e.touches && e.touches.length > 0) {
+              nearStartX = e.touches[0].clientX;
+              nearStartY = e.touches[0].clientY;
+              isNearDragged = false;
+            }
+          };
+
+          const handleNearTouchMove = (e) => {
+            if (e.touches && e.touches.length > 0) {
+              const diffX = Math.abs(e.touches[0].clientX - nearStartX);
+              const diffY = Math.abs(e.touches[0].clientY - nearStartY);
+              if (diffX > 8 || diffY > 8) isNearDragged = true;
+            }
+          };
+
+          const handleNearMouseDown = (e) => {
+            nearStartX = e.clientX;
+            nearStartY = e.clientY;
+            isNearDragged = false;
+          };
+
+          const handleNearMouseMove = (e) => {
+            if (e.buttons === 1) {
+              const diffX = Math.abs(e.clientX - nearStartX);
+              const diffY = Math.abs(e.clientY - nearStartY);
+              if (diffX > 8 || diffY > 8) isNearDragged = true;
+            }
+          };
+
+          const handleNearClick = (near) => {
+            if (isNearDragged) { isNearDragged = false; return; }
+            selectPhoto(near);
+          };
+
+          const handleTouchStart = (e) => {
+            if (e.touches && e.touches.length > 0) {
+              touchStartX = e.touches[0].clientX;
+              touchStartY = e.touches[0].clientY;
+              touchEndX = touchStartX;
+              touchEndY = touchStartY;
+            }
+          };
+
+          const handleTouchMove = (e) => {
+            if (e.touches && e.touches.length > 0) {
+              touchEndX = e.touches[0].clientX;
+              touchEndY = e.touches[0].clientY;
+            }
+          };
+
+          const handleTouchEnd = () => {
+            const diffX = touchStartX - touchEndX;
+            const diffY = touchStartY - touchEndY;
+
+            // 縦方向の移動量が横方向より大きい場合はスクロール操作とみなし、スワイプ判定を行わない
+            if (Math.abs(diffY) > Math.abs(diffX)) {
+              touchStartX = 0; touchEndX = 0;
+              touchStartY = 0; touchEndY = 0;
+              return;
+            }
+
+            if (Math.abs(diffX) > 60 && touchEndX !== 0) {
+              if (diffX > 0) nextPhoto();
+              else prevPhoto();
+            }
+            touchStartX = 0; touchEndX = 0;
+            touchStartY = 0; touchEndY = 0;
+          };
+
+          const shuffleArray = (arr) => {
+            const res = [...arr];
+            for (let i = res.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [res[i], res[j]] = [res[j], res[i]];
+            }
+            return res;
+          };
+
+          const getUserLocation = () => {
+            if (!navigator.geolocation) {
+              alert("お使いの端末・ブラウザは位置情報に対応していません。");
+              sortOption.value = "default";
+              return;
+            }
+            isLocating.value = true;
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                userLocation.value = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                isLocating.value = false;
+              },
+              (err) => {
+                isLocating.value = false;
+                alert("位置情報の取得に失敗しました。端末の位置情報設定をご確認ください。");
+                sortOption.value = "default";
+              },
+              { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            );
+          };
+
+          const handleSortChange = () => {
+            if (sortOption.value === "random") shuffledPhotosCache.value = shuffleArray(photos.value);
+            else if (sortOption.value === "distance" && !userLocation.value) getUserLocation();
+          };
+
+          const getDistanceFromUser = (coordsStr) => {
+            if (!coordsStr || !userLocation.value) return Infinity;
+            const parts = coordsStr.split(',').map(Number);
+            if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return Infinity;
+
+            const R = 6371;
+            const dLat = (parts[0] - userLocation.value.lat) * Math.PI / 180;
+            const dLon = (parts[1] - userLocation.value.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(userLocation.value.lat * Math.PI / 180) * Math.cos(parts[0] * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+          };
+
+          const formatDistance = (coordsStr) => {
+            const dist = getDistanceFromUser(coordsStr);
+            if (dist === Infinity) return '';
+            if (dist < 1) return Math.round(dist * 1000) + 'm';
+            return dist.toFixed(1) + 'km';
+          };
+
+          const hasActiveFilters = computed(() => searchQuery.value !== "" || selectedCity.value !== "" || selectedSeason.value !== "" || selectedIcon.value !== "");
+          
+          const filteredPhotos = computed(() => {
+            let res = sortOption.value === "random" ? [...shuffledPhotosCache.value] : [...photos.value];
+
+            if (selectedCity.value) res = res.filter(p => p.city === selectedCity.value);
+            if (selectedSeason.value) res = res.filter(p => p.season === selectedSeason.value);
+            if (selectedIcon.value) res = res.filter(p => p.icon === selectedIcon.value);
+            if (searchQuery.value) {
+              const q = searchQuery.value.toLowerCase();
+              res = res.filter(p => 
+                (p.name && p.name.toLowerCase().includes(q)) ||
+                (p.city && p.city.toLowerCase().includes(q)) ||
+                (p.season && p.season.toLowerCase().includes(q)) ||
+                (p.icon && p.icon.toLowerCase().includes(q)) ||
+                (p.description && p.description.toLowerCase().includes(q))
+              );
+            }
+
+            if (sortOption.value === "distance" && userLocation.value) {
+              res.sort((a, b) => getDistanceFromUser(a.coords) - getDistanceFromUser(b.coords));
+            } else if (sortOption.value === "date_desc") {
+              res.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+            } else if (sortOption.value === "date_asc") {
+              res.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+            } else if (sortOption.value === "id_desc") {
+              res.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+            } else if (sortOption.value === "default") {
+              res.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+            }
+
+            return res;
+          });
+
+          const resetFilters = () => { searchQuery.value = ""; selectedCity.value = ""; selectedSeason.value = ""; selectedIcon.value = ""; };
+
+          const uniqueCities = computed(() => Array.from(new Set(photos.value.map(p => p.city).filter(Boolean))).sort());
+          const uniqueSeasons = computed(() => Array.from(new Set(photos.value.map(p => p.season).filter(Boolean))).sort());
+          const uniqueIcons = computed(() => Array.from(new Set(photos.value.map(p => p.icon).filter(Boolean))).sort());
+
+          const hasActiveMapFilters = computed(() => mapSearchQuery.value !== "" || mapSelectedCity.value !== "" || mapSelectedSeason.value !== "" || mapSelectedIcon.value !== "");
+          const mapFilteredPhotos = computed(() => {
+            let res = photos.value.filter(p => p.coords);
+            if (mapSelectedCity.value) res = res.filter(p => p.city === mapSelectedCity.value);
+            if (mapSelectedSeason.value) res = res.filter(p => p.season === mapSelectedSeason.value);
+            if (mapSelectedIcon.value) res = res.filter(p => p.icon === mapSelectedIcon.value);
+            if (mapSearchQuery.value) {
+              const q = mapSearchQuery.value.toLowerCase();
+              res = res.filter(p => 
+                (p.name && p.name.toLowerCase().includes(q)) ||
+                (p.city && p.city.toLowerCase().includes(q)) ||
+                (p.season && p.season.toLowerCase().includes(q)) ||
+                (p.icon && p.icon.toLowerCase().includes(q)) ||
+                (p.description && p.description.toLowerCase().includes(q))
+              );
+            }
+            return res;
+          });
+
+          const resetMapFilters = () => { mapSearchQuery.value = ""; mapSelectedCity.value = ""; mapSelectedSeason.value = ""; mapSelectedIcon.value = ""; };
+
+          const recommendedPhotos = computed(() => {
+            if (photos.value.length === 0) return [];
+            const now = new Date();
+            const currentMonthIdx = now.getMonth();
+            const currentDateVal = now.getDate();
+
+            const getDayOfYear = (m, d) => {
+              const daysInMonths = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+              return (daysInMonths[m] || 0) + d;
+            };
+
+            const todayDayOfYear = getDayOfYear(currentMonthIdx, currentDateVal);
+
+            const scored = photos.value.map(photo => {
+              let diff = 999;
+              if (photo.date) {
+                const parts = photo.date.split(/[\/\-.]/);
+                if (parts.length >= 3) {
+                  const m = parseInt(parts[1], 10) - 1;
+                  const d = parseInt(parts[2], 10);
+                  if (!isNaN(m) && !isNaN(d) && m >= 0 && m < 12 && d >= 1 && d <= 31) {
+                    const photoDayOfYear = getDayOfYear(m, d);
+                    let dDiff = Math.abs(todayDayOfYear - photoDayOfYear);
+                    if (dDiff > 182.5) dDiff = 365 - dDiff;
+                    diff = dDiff;
+                  }
+                }
+              }
+              return { photo, diff };
+            });
+
+            scored.sort((a, b) => a.diff - b.diff);
+            return scored.map(item => item.photo).slice(0, 12);
+          });
+
+          // 🆕 直近の更新（IDが大きい＝新しく登録されたもの順）
+          const recentlyAddedPhotos = computed(() => {
+            if (photos.value.length === 0) return [];
+            return [...photos.value]
+              .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0))
+              .slice(0, 12);
+          });
+
+          const getMarkerFAIcon = (iconStr, seasonStr) => {
+            const str = ((iconStr || '') + ' ' + (seasonStr || '')).toLowerCase();
+            if (str.includes('シェアサイクル') || str.includes('サイクル') || str.includes('自転車')) return 'fa-bicycle';
+            if (str.includes('山') || str.includes('立山') || str.includes('峰')) return 'fa-mountain';
+            if (str.includes('海') || str.includes('川') || str.includes('滝') || str.includes('水')) return 'fa-water';
+            if (str.includes('城') || str.includes('跡')) return 'fa-chess-rook';
+            if (str.includes('神社') || str.includes('寺') || str.includes('鳥居')) return 'fa-torii-gate';
+            if (str.includes('駅') || str.includes('電車') || str.includes('列車')) return 'fa-train';
+            if (str.includes('バス')) return 'fa-bus';
+            if (str.includes('夜景') || str.includes('星') || str.includes('月')) return 'fa-moon';
+            if (str.includes('紅葉') || str.includes('楓')) return 'fa-tree';
+            if (str.includes('雪') || str.includes('冬')) return 'fa-snowflake';
+            // 桜など適したアイコンが無いものは、カメラアイコンを既定表示とする（地図ピンは必ず何か表示する必要があるため）
+            return 'fa-camera';
+          };
+
+          // 🏷️ アイコン/分類タグに応じたFont Awesomeアイコンを判定（絵文字は使わない）
+          //    適切なアイコンが見つからない場合は null を返し、呼び出し側で文字のみ表示する
+          const getIconTagFA = (iconStr) => {
+            if (!iconStr) return null;
+            const str = iconStr.toLowerCase();
+            if (str.includes('その他')) return 'fa-camera';
+            if (str.includes('シェアサイクル') || str.includes('サイクル') || str.includes('自転車')) return 'fa-bicycle';
+            if (str.includes('鉄道') || str.includes('電車') || str.includes('列車') || str.includes('駅')) return 'fa-train';
+            if (str.includes('バス')) return 'fa-bus';
+            if (str.includes('立山') || str.includes('山') || str.includes('峰')) return 'fa-mountain';
+            if (str.includes('グルメ') || str.includes('食') || str.includes('カフェ') || str.includes('レストラン')) return 'fa-utensils';
+            if (str.includes('紅葉') || str.includes('楓')) return 'fa-tree';
+            if (str.includes('海') || str.includes('川') || str.includes('滝') || str.includes('水')) return 'fa-water';
+            if (str.includes('城') || str.includes('跡')) return 'fa-chess-rook';
+            if (str.includes('神社') || str.includes('寺') || str.includes('鳥居')) return 'fa-torii-gate';
+            if (str.includes('夜景') || str.includes('星') || str.includes('月')) return 'fa-moon';
+            if (str.includes('雪')) return 'fa-snowflake';
+            // 桜に適したアイコンが無いため、アイコン無し（文字のみ）で表示する
+            return null;
+          };
+
+          // 🌸 季節に応じた配色（春=ピンク／夏=緑／秋=オレンジ／冬=青）
+          const SEASON_COLOR_MAP = {
+            '春': { text: 'text-pink-600',    textSolid: 'text-pink-500',    bg: 'bg-pink-50',    border: 'border-pink-100',    hoverBg: 'hover:bg-pink-100' },
+            '夏': { text: 'text-emerald-600', textSolid: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100', hoverBg: 'hover:bg-emerald-100' },
+            '秋': { text: 'text-orange-600',  textSolid: 'text-orange-500', bg: 'bg-orange-50',  border: 'border-orange-100',  hoverBg: 'hover:bg-orange-100' },
+            '冬': { text: 'text-blue-600',    textSolid: 'text-blue-500',   bg: 'bg-blue-50',    border: 'border-blue-100',    hoverBg: 'hover:bg-blue-100' }
+          };
+          const getSeasonColors = (season) => SEASON_COLOR_MAP[season] || { text: 'text-slate-600', textSolid: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-100', hoverBg: 'hover:bg-slate-100' };
+
+          const convertDriveUrl = (url) => {
+            if (!url) return "";
+            const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+              return 'https://drive.google.com/thumbnail?id=' + match[1] + '&sz=w800';
+            }
+            return url;
+          };
+
+          const loadData = () => {
+            debugStatus.value = "データを取得中...";
+            callGas('getPhotos')
+              .then(response => {
+                const data = (response && response.data) ? response.data : (Array.isArray(response) ? response : []);
+                photos.value = data.map(item => ({
+                  id: String(item['ID'] || Math.random()),
+                  name: item['名前'] || item['タイトル'] || '',
+                  coords: item['座標'] || '',
+                  address: item['住所'] || '',
+                  city: item['市町村'] || '',
+                  description: item['説明'] || '',
+                  icon: item['アイコン'] || item['タグ'] || '',
+                  season: item['季節'] || '',
+                  date: item['撮影日'] || '',
+                  time: item['撮影時刻'] || '',
+                  camera: item['カメラ'] || '',
+                  lens: item['レンズ'] || '',
+                  focalLength: item['焦点距離'] || '',
+                  aperture: item['絞り'] || '',
+                  shutter: item['シャッタースピード'] || '',
+                  iso: item['ISO'] || '',
+                  exposure: item['露出補正'] || '',
+                  tag: item['タグ'] || '',
+                  originalUrl: item['元投稿のURL'] || 'メンバー',
+                  registeredAt: item['登録日時'] || '',
+                  imageUrl: convertDriveUrl(item['画像URL'] || item['写真URL'] || item['画像'] || '')
+                })).filter(item => item.imageUrl && item.imageUrl.trim() !== '' && item.name && item.name.trim() !== '');
+                loading.value = false;
+              })
+              .catch(err => {
+                console.error('写真データ取得エラー:', err);
+                debugStatus.value = "データの取得に失敗しました: " + (err.message || err);
+                loading.value = false;
+              });
+          };
+
+          onMounted(() => {
+            loadData();
+            fetchInstagramHashtagPosts();
+            fetchOfficialInstagramPosts();
+          });
+
+          const selectPhoto = (photo, fromRecommended = false) => { 
+            selectedPhoto.value = photo; 
+            currentList.value = fromRecommended ? recommendedPhotos.value : (activeTab.value === 'map' ? mapFilteredPhotos.value : filteredPhotos.value);
+            nextTick(() => { initDetailMap(); });
+          };
+
+          const currentIndex = computed(() => {
+            if (!selectedPhoto.value) return -1;
+            return currentList.value.findIndex(p => p.id === selectedPhoto.value.id);
+          });
+          const currentListLength = computed(() => currentList.value.length);
+
+          const prevPhoto = () => { if (currentIndex.value > 0) selectPhoto(currentList.value[currentIndex.value - 1]); };
+          const nextPhoto = () => { if (currentIndex.value < currentList.value.length - 1) selectPhoto(currentList.value[currentIndex.value + 1]); };
+
+          const goBack = () => { selectedPhoto.value = null; };
+
+          const filterBy = (type, val) => {
+            if (!val) return;
+            resetFilters();
+            if (type === 'city') selectedCity.value = val;
+            if (type === 'season') selectedSeason.value = val;
+            if (type === 'icon') selectedIcon.value = val;
+            
+            activeTab.value = 'search';
+            selectedPhoto.value = null;
+          };
+
+          const getDistance = (c1, c2) => {
+            if (!c1 || !c2) return Infinity;
+            const [lat1, lon1] = c1.split(',').map(Number);
+            const [lat2, lon2] = c2.split(',').map(Number);
+            if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
+            return Math.hypot(lat1 - lat2, lon1 - lon2);
+          };
+
+          const nearbyPhotos = computed(() => {
+            if (!selectedPhoto.value || !selectedPhoto.value.coords) return [];
+            return photos.value
+              .filter(p => p.id !== selectedPhoto.value.id && p.coords)
+              .map(p => ({ ...p, dist: getDistance(selectedPhoto.value.coords, p.coords) }))
+              .sort((a, b) => a.dist - b.dist)
+              .slice(0, 8);
+          });
+
+          const updateMapMarkers = () => {
+            if (!fullLeafletMap) return;
+            if (fullMapMarkersGroup) fullLeafletMap.removeLayer(fullMapMarkersGroup);
+            
+            fullMapMarkersGroup = L.layerGroup().addTo(fullLeafletMap);
+            const bounds = [];
+
+            mapFilteredPhotos.value.forEach(p => {
+              if (p.coords) {
+                const parts = p.coords.split(',').map(Number);
+                if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                  const lat = parts[0];
+                  const lon = parts[1];
+                  bounds.push([lat, lon]);
+
+                  const iconFa = getMarkerFAIcon(p.icon, p.season);
+                  
+                  const customIcon = L.divIcon({
+                    className: 'custom-map-pin',
+                    html: `<div style="width:34px; height:34px; background:linear-gradient(135deg, #69C5D1, #DE92BC); color:white; border:2px solid white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.3);"><i class="fas ${iconFa}" style="font-size:14px; margin:auto;"></i></div>`,
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17]
+                  });
+
+                  const marker = L.marker([lat, lon], { icon: customIcon });
+                  marker.on('click', () => { selectPhoto(p); });
+                  fullMapMarkersGroup.addLayer(marker);
+                }
+              }
+            });
+
+            if (bounds.length > 0) fullLeafletMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+            else fullLeafletMap.setView([36.695, 137.213], 10);
+          };
+
+          const initFullMap = () => {
+            nextTick(() => {
+              setTimeout(() => {
+                const mapEl = document.getElementById('full-map');
+                if (!mapEl) return;
+
+                if (!fullLeafletMap) {
+                  fullLeafletMap = L.map('full-map').setView([36.695, 137.213], 10);
+                  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap'
+                  }).addTo(fullLeafletMap);
+                }
+                updateMapMarkers();
+                fullLeafletMap.invalidateSize();
+              }, 120);
+            });
+          };
+
+          watch(mapFilteredPhotos, () => {
+            if (activeTab.value === 'map') updateMapMarkers();
+          });
+
+          const initDetailMap = () => {
+            if (!selectedPhoto.value || !selectedPhoto.value.coords) return;
+            const parts = selectedPhoto.value.coords.split(',').map(Number);
+            if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return;
+            const [lat, lon] = parts;
+
+            nextTick(() => {
+              setTimeout(() => {
+                if (detailLeafletMap) {
+                  detailLeafletMap.remove();
+                  detailLeafletMap = null;
+                }
+
+                const mapEl = document.getElementById('detail-map');
+                if (!mapEl) return;
+
+                detailLeafletMap = L.map('detail-map').setView([lat, lon], 14);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(detailLeafletMap);
+                L.marker([lat, lon]).addTo(detailLeafletMap);
+                detailLeafletMap.invalidateSize();
+              }, 150);
+            });
+          };
+
+          const switchTab = (tab) => {
+            activeTab.value = tab;
+            selectedPhoto.value = null;
+            if (tab === 'map') initFullMap();
+          };
+
+          // 🗺️ 地図表示モード（'custom'=アプリ内Leafletマップ / 'mymap'=Googleマイマップ埋め込み）
+          const mapViewMode = ref('custom');
+          const setMapViewMode = (mode) => {
+            mapViewMode.value = mode;
+            if (mode === 'custom') {
+              nextTick(() => {
+                setTimeout(() => {
+                  if (fullLeafletMap) fullLeafletMap.invalidateSize();
+                }, 100);
+              });
+            }
+          };
+
+          const getMapsLink = (coords) => coords ? 'https://www.google.com/maps/search/?api=1&query=' + coords : '#';
+
+          return { 
+            photos, searchQuery, selectedPhoto, filteredPhotos, loading, debugStatus, 
+            activeTab, selectedCity, selectedSeason, selectedIcon, isFilterOpen, hasActiveFilters,
+            sortOption, userLocation, isLocating, handleSortChange, formatDistance,
+            mapSearchQuery, mapSelectedCity, mapSelectedSeason, mapSelectedIcon, mapIsFilterOpen, mapFilteredPhotos, hasActiveMapFilters, resetMapFilters,
+            uniqueCities, uniqueSeasons, uniqueIcons, resetFilters,
+            currentMonth, recommendedPhotos, recentlyAddedPhotos, switchTab, LOGO_DATA_URL,
+            mapViewMode, setMapViewMode,
+            getIconTagFA, getSeasonColors,
+            instagramPosts, instaLoading, officialInstagramPosts, officialInstaLoading, officialInstagramUrl,
+            instaErrorMessage, officialInstaErrorMessage,
+            selectPhoto, goBack, getMapsLink, filterBy,
+            currentIndex, currentListLength, prevPhoto, nextPhoto, nearbyPhotos,
+            handleTouchStart, handleTouchMove, handleTouchEnd,
+            handleNearTouchStart, handleNearTouchMove, handleNearMouseDown, handleNearMouseMove, handleNearClick
+          };
+        }
+      }).mount('#app');
+    } catch (e) {
+      document.getElementById('sys-error-log').style.display = 'block';
+      document.getElementById('sys-error-log').innerHTML = "<b>システムエラー:</b> " + e.message;
+    }
+  </script>
+</body>
+</html>
