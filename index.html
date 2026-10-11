@@ -233,8 +233,8 @@
             <div class="relative aspect-square bg-slate-900 flex items-center justify-center overflow-hidden">
               <img :src="photo.imageUrl" class="absolute inset-0 w-full h-full object-cover blur-xl scale-125 opacity-60 select-none pointer-events-none" aria-hidden="true">
               <img :src="photo.imageUrl" :alt="photo.name" class="relative z-10 w-full h-full img-contain group-hover:scale-105 transition duration-300" loading="lazy">
-              <div class="absolute top-1.5 left-1.5 z-20 bg-emerald-600/90 backdrop-blur-md text-white text-[9px] px-2 py-0.5 rounded font-bold">
-                ID: {{ photo.id }}
+              <div v-if="formatRegDate(photo.registeredAt)" class="absolute top-1.5 left-1.5 z-20 bg-emerald-600/90 backdrop-blur-md text-white text-[9px] px-2 py-0.5 rounded font-bold">
+                {{ formatRegDate(photo.registeredAt) }}
               </div>
               <div class="absolute top-1.5 right-1.5 z-20 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded font-medium">
                 {{ photo.city }}
@@ -635,6 +635,48 @@
       <div v-if="selectedPhoto" class="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm" @click="goBack"></div>
     </transition>
 
+    <!-- 共有ポップアップ -->
+    <transition name="fade">
+      <div v-if="showShareModal" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="showShareModal = false">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-5 space-y-3">
+          <div class="flex items-center gap-2">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center text-white" :class="shareCopied ? 'bg-emerald-500' : 'bg-amber-500'">
+              <i class="fas" :class="shareCopied ? 'fa-check' : 'fa-exclamation'"></i>
+            </div>
+            <h3 class="font-bold text-slate-800 text-sm">{{ shareCopied ? '共有リンクをコピーしました' : '自動コピーできませんでした' }}</h3>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            {{ shareCopied ? 'LINEやメールなどに貼り付けて共有できます。' : '下のURLを選択して、手動でコピーしてください。' }}
+          </p>
+          <input ref="shareUrlInput" type="text" readonly :value="shareUrl" @focus="$event.target.select()" @click="$event.target.select()"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-xl text-[11px] font-mono text-slate-700 bg-slate-50">
+
+          <p class="text-[11px] font-bold text-slate-600 pt-1">SNSで共有する</p>
+          <div class="grid grid-cols-3 gap-2">
+            <a :href="lineShareUrl" target="_blank" rel="noopener" class="py-2 rounded-xl text-white text-[11px] font-bold flex flex-col items-center gap-0.5 hover:opacity-90 transition" style="background:#06C755">
+              <i class="fab fa-line text-lg"></i> LINE
+            </a>
+            <a :href="xShareUrl" target="_blank" rel="noopener" class="py-2 rounded-xl text-white text-[11px] font-bold flex flex-col items-center gap-0.5 hover:opacity-90 transition" style="background:#000">
+              <i class="fab fa-x-twitter text-lg"></i> X
+            </a>
+            <a :href="facebookShareUrl" target="_blank" rel="noopener" class="py-2 rounded-xl text-white text-[11px] font-bold flex flex-col items-center gap-0.5 hover:opacity-90 transition" style="background:#1877F2">
+              <i class="fab fa-facebook-f text-lg"></i> Facebook
+            </a>
+          </div>
+          <button v-if="canNativeShare" @click="nativeShare" class="w-full py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition flex items-center justify-center gap-1.5">
+            <i class="fas fa-share-nodes"></i> その他のアプリで共有
+          </button>
+
+          <div class="flex gap-2">
+            <button @click="recopyShareUrl" class="flex-1 py-2 bg-teal-600 text-white rounded-xl text-xs font-bold hover:bg-teal-700 transition flex items-center justify-center gap-1.5">
+              <i class="fas fa-link"></i> もう一度コピー
+            </button>
+            <button @click="showShareModal = false" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition">閉じる</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <transition name="modal">
       <div v-if="selectedPhoto" 
            class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-2 sm:p-6 lg:p-10 pb-safe"
@@ -687,7 +729,13 @@
               </div>
 
               <div>
-                <h2 class="text-xl md:text-2xl font-bold text-slate-900 leading-snug">{{ selectedPhoto.name }}</h2>
+                <div class="flex items-start justify-between gap-3">
+                  <h2 class="text-xl md:text-2xl font-bold text-slate-900 leading-snug">{{ selectedPhoto.name }}</h2>
+                  <button @click="sharePhoto(selectedPhoto)" title="この写真の共有リンクをコピー"
+                          class="shrink-0 mt-0.5 px-3 py-1.5 rounded-full text-[11px] font-bold border transition flex items-center gap-1.5 shadow-sm bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100">
+                    <i class="fas fa-link"></i> 共有リンクをコピー
+                  </button>
+                </div>
                 <p v-if="selectedPhoto.address" class="text-xs text-slate-500 flex items-start gap-1 mt-1.5">
                   <i class="fas fa-map-pin text-slate-400 mt-0.5"></i> {{ selectedPhoto.address }}
                 </p>
@@ -1101,11 +1149,31 @@
             return scored.map(item => item.photo).slice(0, 12);
           });
 
-          // 🆕 直近の更新（IDが大きい＝新しく登録されたもの順）
+          // 登録日時 → Date（解釈できなければ null）
+          const parseRegDate = (v) => {
+            if (!v) return null;
+            let d = (v instanceof Date) ? v : new Date(v);
+            if (isNaN(d.getTime())) d = new Date(String(v).replace(/-/g, '/').replace('T', ' '));
+            return isNaN(d.getTime()) ? null : d;
+          };
+          // 表示用：YYYY/MM/DD（解釈できない文字列は先頭10文字をそのまま表示）
+          const formatRegDate = (v) => {
+            if (!v) return '';
+            const d = parseRegDate(v);
+            if (!d) return String(v).slice(0, 10);
+            return `${d.getFullYear()}/${('0' + (d.getMonth() + 1)).slice(-2)}/${('0' + d.getDate()).slice(-2)}`;
+          };
+
+          // 🆕 直近の更新（登録日時の新しい順。登録日時が無いものはID順）
           const recentlyAddedPhotos = computed(() => {
             if (photos.value.length === 0) return [];
             return [...photos.value]
-              .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0))
+              .sort((a, b) => {
+                const da = parseRegDate(a.registeredAt), db = parseRegDate(b.registeredAt);
+                const ta = da ? da.getTime() : 0, tb = db ? db.getTime() : 0;
+                if (tb !== ta) return tb - ta;
+                return (Number(b.id) || 0) - (Number(a.id) || 0);
+              })
               .slice(0, 12);
           });
 
@@ -1193,6 +1261,7 @@
                   imageUrl: convertDriveUrl(item['画像URL'] || item['写真URL'] || item['画像'] || '')
                 })).filter(item => item.imageUrl && item.imageUrl.trim() !== '' && item.name && item.name.trim() !== '');
                 loading.value = false;
+                openPhotoFromUrl();
               })
               .catch(err => {
                 console.error('写真データ取得エラー:', err);
@@ -1206,6 +1275,101 @@
             fetchInstagramHashtagPosts();
             fetchOfficialInstagramPosts();
           });
+
+          // ==== 🔗 共有リンク ＆ 個別URL（?id=○○） ====
+          const SHARE_TAG = "ふふっと富山のフォトマップ";
+          const BASE_TITLE = document.title;
+          const showShareModal = ref(false);
+          const shareUrl = ref("");
+          const shareTitle = ref("");
+          const shareCopied = ref(false);
+          const shareUrlInput = ref(null);
+          const shareText = computed(() => shareTitle.value + '｜' + SHARE_TAG);
+          const lineShareUrl = computed(() => 'https://social-plugins.line.me/lineit/share?url=' + encodeURIComponent(shareUrl.value));
+          const xShareUrl = computed(() => 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareText.value) + '&url=' + encodeURIComponent(shareUrl.value) + '&hashtags=' + encodeURIComponent(SHARE_TAG));
+          const facebookShareUrl = computed(() => 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(shareUrl.value));
+          const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share;
+          const nativeShare = async () => {
+            try { await navigator.share({ title: shareText.value, text: shareText.value, url: shareUrl.value }); } catch (e) { /* キャンセル／非対応は無視 */ }
+          };
+
+          // 個別URLを作る（他のクエリやハッシュは外して ?id= のみ）
+          const buildPhotoUrl = (id) => location.origin + location.pathname + '?id=' + encodeURIComponent(id);
+          const getUrlId = () => new URLSearchParams(location.search).get('id') || "";
+
+          // クリック操作の中で同期的に実行する（awaitを挟むとブラウザにブロックされる）
+          const copyTextSync = (text) => {
+            let ok = false;
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            try { ta.setSelectionRange(0, text.length); } catch (e) {}
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            document.body.removeChild(ta);
+            if (!ok && navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(() => { shareCopied.value = true; }).catch(() => {});
+            }
+            return ok;
+          };
+
+          const sharePhoto = (photo) => {
+            if (!photo) return;
+            shareTitle.value = photo.name || "";
+            shareUrl.value = buildPhotoUrl(photo.id);
+            shareCopied.value = copyTextSync(shareUrl.value);
+            showShareModal.value = true;
+            nextTick(() => { if (!shareCopied.value && shareUrlInput.value) shareUrlInput.value.select(); });
+          };
+
+          const recopyShareUrl = () => {
+            shareCopied.value = copyTextSync(shareUrl.value);
+            if (!shareCopied.value && shareUrlInput.value) shareUrlInput.value.select();
+          };
+
+          // 詳細画面の開閉に合わせてアドレスバーのURLを ?id=○○ に同期
+          //  開く: pushState（戻るボタンで閉じられる） / 前後移動: replaceState / 閉じる: 戻る or URLを元に戻す
+          watch(selectedPhoto, (now) => {
+            if (now) {
+              document.title = (now.name || '') + '｜' + BASE_TITLE;
+              if (getUrlId() === String(now.id)) return;  // すでに同期済み（URL直アクセス・戻る/進む）
+              const url = buildPhotoUrl(now.id);
+              const st = history.state || {};
+              if (getUrlId()) history.replaceState({ photoId: now.id, initial: !!st.initial }, '', url);
+              else history.pushState({ photoId: now.id }, '', url);
+            } else {
+              document.title = BASE_TITLE;
+              if (!getUrlId()) return;
+              const st = history.state || {};
+              if (st.photoId && !st.initial) history.back();                       // 一覧から開いた場合は履歴を1つ戻す
+              else history.replaceState({}, '', location.pathname);                 // URL直アクセスの場合はURLだけ元に戻す
+            }
+          });
+
+          // 戻る／進むボタン：URLの id に合わせて詳細画面を開閉
+          window.addEventListener('popstate', () => {
+            const id = getUrlId();
+            if (!id) { selectedPhoto.value = null; return; }
+            const target = photos.value.find(p => String(p.id) === String(id));
+            if (target) {
+              if (!selectedPhoto.value || selectedPhoto.value.id !== target.id) selectPhoto(target, false);
+            } else {
+              selectedPhoto.value = null;
+            }
+          });
+
+          // 読み込み完了後、URLに ?id=○○ があればその写真を開く
+          const openPhotoFromUrl = () => {
+            const id = getUrlId();
+            if (!id) return;
+            const target = photos.value.find(p => String(p.id) === String(id));
+            if (target) {
+              history.replaceState({ photoId: target.id, initial: true }, '', buildPhotoUrl(target.id));
+              selectPhoto(target, false);
+            }
+          };
 
           const selectPhoto = (photo, fromRecommended = false) => { 
             selectedPhoto.value = photo; 
@@ -1360,12 +1524,13 @@
             sortOption, userLocation, isLocating, handleSortChange, formatDistance,
             mapSearchQuery, mapSelectedCity, mapSelectedSeason, mapSelectedIcon, mapIsFilterOpen, mapFilteredPhotos, hasActiveMapFilters, resetMapFilters,
             uniqueCities, uniqueSeasons, uniqueIcons, resetFilters,
-            currentMonth, recommendedPhotos, recentlyAddedPhotos, switchTab, LOGO_DATA_URL,
+            currentMonth, recommendedPhotos, recentlyAddedPhotos, formatRegDate, switchTab, LOGO_DATA_URL,
             mapViewMode, setMapViewMode,
             getIconTagFA, getSeasonColors,
             instagramPosts, instaLoading, officialInstagramPosts, officialInstaLoading, officialInstagramUrl,
             instaErrorMessage, officialInstaErrorMessage,
             selectPhoto, goBack, getMapsLink, filterBy,
+            sharePhoto, recopyShareUrl, showShareModal, shareUrl, shareCopied, shareUrlInput, lineShareUrl, xShareUrl, facebookShareUrl, canNativeShare, nativeShare,
             currentIndex, currentListLength, prevPhoto, nextPhoto, nearbyPhotos,
             handleTouchStart, handleTouchMove, handleTouchEnd,
             handleNearTouchStart, handleNearTouchMove, handleNearMouseDown, handleNearMouseMove, handleNearClick
